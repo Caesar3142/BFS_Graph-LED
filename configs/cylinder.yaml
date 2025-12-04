@@ -1,0 +1,35 @@
+# Configuration for flow past a cylinder problem
+
+seed: 42
+
+data:
+  path: "data/cylinder_flow.npz"  # Path to your data file
+  sequence_length: 10
+  prediction_horizon: 1
+  normalize: true
+  k_neighbors: 8
+  graph_type: "knn"  # "knn" or "delaunay"
+
+model:
+  input_dim: 3  # u, v, p (velocity components and pressure)
+  output_dim: 3
+  hidden_dim: 64
+  latent_dim: 32
+  num_gnn_layers: 3
+  num_attention_heads: 4
+  num_attention_layers: 2
+  use_edge_features: true
+  dropout: 0.1
+  aggregation: "mean"  # "mean", "max", "sum", "attention"
+
+training:
+  batch_size: 4
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  patience: 10  # For learning rate scheduler
+
+problem:
+  name: "cylinder"
+  reynolds_number: 100  # Can vary this for different cases
+
