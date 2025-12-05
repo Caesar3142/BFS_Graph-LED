@@ -136,6 +136,33 @@ def main():
                             feature_idx=f,
                             save_path=save_path
                         )
+                    
+                    # Visualize velocity magnitude if u and v are available
+                    if pred_np.shape[2] >= 2:
+                        pred_u = pred_np[t, :, 0]
+                        pred_v = pred_np[t, :, 1]
+                        pred_magnitude = np.sqrt(pred_u**2 + pred_v**2)
+                        
+                        target_u = target_np[t, :, 0]
+                        target_v = target_np[t, :, 1]
+                        target_magnitude = np.sqrt(target_u**2 + target_v**2)
+                        
+                        # Create magnitude arrays with same shape as original
+                        pred_mag_array = pred_magnitude.reshape(1, -1, 1)
+                        target_mag_array = target_magnitude.reshape(1, -1, 1)
+                        
+                        save_path = os.path.join(
+                            args.output_dir,
+                            f'prediction_batch{batch_idx}_timestep{t}_velocity_magnitude.png'
+                        )
+                        visualize_prediction_comparison(
+                            pred_mag_array,
+                            target_mag_array,
+                            node_pos_np,
+                            timestep=0,
+                            feature_idx=0,
+                            save_path=save_path
+                        )
     
     # Compute metrics
     all_predictions = torch.cat(all_predictions, dim=0)

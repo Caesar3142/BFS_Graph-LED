@@ -51,21 +51,39 @@ def visualize_data_overview(data_path, output_dir='results/visualizations'):
     feature_names = ['u-velocity', 'v-velocity', 'pressure']
     colormaps = ['viridis', 'coolwarm', 'plasma']
     
+    # Calculate domain aspect ratio for proper figure sizing
+    x_range = node_positions[:, 0].max() - node_positions[:, 0].min()
+    y_range = node_positions[:, 1].max() - node_positions[:, 1].min()
+    aspect_ratio = x_range / y_range if y_range > 0 else 1.0
+    
+    # Calculate figure size based on aspect ratio
+    base_height = 6.0
+    base_width = 8.0  # Width per subplot
+    total_width = base_width * 2  # 2 subplots
+    total_height = base_height
+    
+    # Adjust height to match aspect ratio if needed
+    if aspect_ratio > 2.0:
+        total_height = base_height
+    elif aspect_ratio < 0.5:
+        total_height = base_height * (1.0 / aspect_ratio)
+        total_height = min(total_height, 12.0)  # Cap at reasonable max
+    
     for feature_idx in range(min(num_features, 3)):
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        fig, axes = plt.subplots(1, 2, figsize=(total_width, total_height))
         
         for idx, t in enumerate([0, num_timesteps - 1]):
             values = flow_fields[t, :, feature_idx]
             
-            # Interpolate to regular grid for smooth ParaView-like contours
+            # Interpolate to regular grid for smooth continuous contours (high resolution)
             X_grid, Y_grid, Z_grid = interpolate_to_grid(
-                node_positions, values, grid_resolution=300
+                node_positions, values, grid_resolution=600
             )
             
-            # Use regular contourf for smooth appearance
+            # Use regular contourf for smooth continuous appearance (high resolution)
             contour = axes[idx].contourf(
                 X_grid, Y_grid, Z_grid,
-                levels=50,
+                levels=100,  # Increased for smoother appearance
                 cmap=colormaps[feature_idx],
                 vmin=flow_fields[:, :, feature_idx].min(),
                 vmax=flow_fields[:, :, feature_idx].max(),
@@ -74,23 +92,71 @@ def visualize_data_overview(data_path, output_dir='results/visualizations'):
             # Add subtle contour lines
             axes[idx].contour(
                 X_grid, Y_grid, Z_grid,
-                levels=20,
+                levels=30,  # Increased for smoother appearance
                 colors='black',
-                alpha=0.15,
-                linewidths=0.3
+                alpha=0.1,  # Reduced opacity
+                linewidths=0.2
             )
-            plt.colorbar(contour, ax=axes[idx], label=feature_names[feature_idx])
-            axes[idx].set_title(f'{feature_names[feature_idx]} at t={t} (timestep {t})', fontsize=12)
+            plt.colorbar(contour, ax=axes[idx], label=feature_names[feature_idx], 
+                        fraction=0.046, pad=0.04)
+            axes[idx].set_title(f'{feature_names[feature_idx]} at t={t} (timestep {t})', 
+                              fontsize=12, fontweight='bold')
             axes[idx].set_xlabel('X', fontsize=10)
             axes[idx].set_ylabel('Y', fontsize=10)
-            axes[idx].axis('equal')
+            axes[idx].set_aspect('equal', adjustable='box')
             axes[idx].grid(True, alpha=0.3)
         
         plt.tight_layout()
         plt.savefig(f'{output_dir}/02_{feature_names[feature_idx].replace("-", "_")}_evolution.png', 
-                   dpi=150, bbox_inches='tight')
+                   dpi=150, bbox_inches='tight', facecolor='white')
         plt.close()
         print(f"Saved: {output_dir}/02_{feature_names[feature_idx].replace("-", "_")}_evolution.png")
+    
+    # Visualize velocity magnitude if u and v are available
+    if num_features >= 2:
+        fig, axes = plt.subplots(1, 2, figsize=(total_width, total_height))
+        
+        for idx, t in enumerate([0, num_timesteps - 1]):
+            u_values = flow_fields[t, :, 0]
+            v_values = flow_fields[t, :, 1]
+            magnitude = np.sqrt(u_values**2 + v_values**2)
+            
+            # Interpolate to regular grid for smooth continuous contours
+            X_grid, Y_grid, Z_grid = interpolate_to_grid(
+                node_positions, magnitude, grid_resolution=600
+            )
+            
+            # Use regular contourf for smooth continuous appearance
+            contour = axes[idx].contourf(
+                X_grid, Y_grid, Z_grid,
+                levels=100,
+                cmap='plasma',
+                vmin=0,
+                vmax=magnitude.max(),
+                extend='both'
+            )
+            # Add subtle contour lines
+            axes[idx].contour(
+                X_grid, Y_grid, Z_grid,
+                levels=30,
+                colors='black',
+                alpha=0.1,
+                linewidths=0.2
+            )
+            plt.colorbar(contour, ax=axes[idx], label='Velocity Magnitude', 
+                        fraction=0.046, pad=0.04)
+            axes[idx].set_title(f'Velocity Magnitude at t={t} (timestep {t})', 
+                              fontsize=12, fontweight='bold')
+            axes[idx].set_xlabel('X', fontsize=10)
+            axes[idx].set_ylabel('Y', fontsize=10)
+            axes[idx].set_aspect('equal', adjustable='box')
+            axes[idx].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/02_velocity_magnitude_evolution.png', 
+                   dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close()
+        print(f"Saved: {output_dir}/02_velocity_magnitude_evolution.png")
     
     # Time series at a few selected points
     num_sample_points = 5
@@ -248,6 +314,33 @@ def visualize_predictions(config_path, checkpoint_path, output_dir='results/visu
                         node_pos_np,
                         timestep=0,
                         feature_idx=feature_idx,
+                        save_path=save_path
+                    )
+                    print(f"Saved: {save_path}")
+            
+            # Visualize velocity magnitude if u and v are available
+            if pred_np.shape[2] >= 2:
+                for timestep in range(min(pred_np.shape[0], 3)):
+                    # Calculate velocity magnitude: |V| = sqrt(u^2 + v^2)
+                    pred_u = pred_np[timestep, :, 0]
+                    pred_v = pred_np[timestep, :, 1]
+                    pred_magnitude = np.sqrt(pred_u**2 + pred_v**2)
+                    
+                    target_u = target_np[timestep, :, 0]
+                    target_v = target_np[timestep, :, 1]
+                    target_magnitude = np.sqrt(target_u**2 + target_v**2)
+                    
+                    # Create magnitude arrays with same shape as original
+                    pred_mag_array = pred_magnitude.reshape(1, -1, 1)  # [1, num_nodes, 1]
+                    target_mag_array = target_magnitude.reshape(1, -1, 1)
+                    
+                    save_path = f'{output_dir}/prediction_sample{sample_count}_velocity_magnitude_timestep{timestep}.png'
+                    visualize_prediction_comparison(
+                        pred_mag_array,
+                        target_mag_array,
+                        node_pos_np,
+                        timestep=0,
+                        feature_idx=0,
                         save_path=save_path
                     )
                     print(f"Saved: {save_path}")

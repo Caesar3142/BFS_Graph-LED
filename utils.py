@@ -52,7 +52,7 @@ def compute_metrics(predictions, targets):
     return metrics
 
 
-def interpolate_to_grid(node_positions, values, grid_resolution=200):
+def interpolate_to_grid(node_positions, values, grid_resolution=600):
     """
     Interpolate unstructured mesh data to regular grid for smooth contour plots.
     
@@ -77,13 +77,24 @@ def interpolate_to_grid(node_positions, values, grid_resolution=200):
     X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
     
     # Interpolate using cubic interpolation for smoothness
-    Z_grid = griddata(
-        node_positions,
-        values,
-        (X_grid, Y_grid),
-        method='cubic',
-        fill_value=np.nan  # Fill outside domain with NaN
-    )
+    # Try cubic first, fall back to linear if cubic fails
+    try:
+        Z_grid = griddata(
+            node_positions,
+            values,
+            (X_grid, Y_grid),
+            method='cubic',
+            fill_value=np.nan  # Fill outside domain with NaN
+        )
+    except:
+        # Fallback to linear if cubic fails
+        Z_grid = griddata(
+            node_positions,
+            values,
+            (X_grid, Y_grid),
+            method='linear',
+            fill_value=np.nan
+        )
     
     return X_grid, Y_grid, Z_grid
 
@@ -96,8 +107,8 @@ def visualize_flow_field(
     save_path=None,
     vmin=None,
     vmax=None,
-    use_contour=True,
-    grid_resolution=300
+        use_contour=True,
+        grid_resolution=600
 ):
     """
     Visualize flow field on unstructured mesh with smooth ParaView-like contours.
@@ -179,10 +190,10 @@ def visualize_prediction_comparison(
     timestep=0,
     feature_idx=0,
     save_path=None,
-    grid_resolution=300
+        grid_resolution=600
 ):
     """
-    Visualize comparison between predictions and targets using smooth ParaView-like contours.
+    Visualize comparison between predictions and targets using smooth continuous contour plots.
     
     Args:
         predictions: Predicted flow fields [timesteps, nodes, features] or [nodes, features]
@@ -216,18 +227,38 @@ def visualize_prediction_comparison(
     vmax = max(pred_values.max(), target_values.max())
     cmap = 'viridis'
     
-    # Interpolate all fields to grid
+    # Calculate domain aspect ratio for proper figure sizing
+    x_range = node_positions[:, 0].max() - node_positions[:, 0].min()
+    y_range = node_positions[:, 1].max() - node_positions[:, 1].min()
+    aspect_ratio = x_range / y_range if y_range > 0 else 1.0
+    
+    # Calculate figure size based on aspect ratio (maintain reasonable size)
+    base_height = 5.0
+    base_width = 6.0  # Width per subplot
+    total_width = base_width * 3  # 3 subplots
+    total_height = base_height
+    
+    # Adjust height to match aspect ratio if needed (but keep reasonable limits)
+    if aspect_ratio > 2.0:
+        # Very wide domain - keep height reasonable
+        total_height = base_height
+    elif aspect_ratio < 0.5:
+        # Very tall domain - increase height
+        total_height = base_height * (1.0 / aspect_ratio)
+        total_height = min(total_height, 10.0)  # Cap at reasonable max
+    
+    # Interpolate all fields to grid for continuous visualization (high resolution for smoothness)
     X_pred, Y_pred, Z_pred = interpolate_to_grid(node_positions, pred_values, grid_resolution)
     X_target, Y_target, Z_target = interpolate_to_grid(node_positions, target_values, grid_resolution)
     X_error, Y_error, Z_error = interpolate_to_grid(node_positions, error, grid_resolution)
     
-    # Create subplots
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # Create subplots with proper aspect ratio
+    fig, axes = plt.subplots(1, 3, figsize=(total_width, total_height))
     
-    # Prediction
+    # Prediction - use more levels for smoother appearance
     contour1 = axes[0].contourf(
         X_pred, Y_pred, Z_pred,
-        levels=50,
+        levels=100,  # Increased from 50 for smoother appearance
         cmap=cmap,
         vmin=vmin,
         vmax=vmax,
@@ -235,22 +266,22 @@ def visualize_prediction_comparison(
     )
     axes[0].contour(
         X_pred, Y_pred, Z_pred,
-        levels=20,
+        levels=30,  # Increased from 20
         colors='black',
-        alpha=0.15,
-        linewidths=0.3
+        alpha=0.1,  # Reduced opacity for smoother look
+        linewidths=0.2
     )
-    plt.colorbar(contour1, ax=axes[0], label='Value')
-    axes[0].set_title('Prediction')
-    axes[0].set_xlabel('X')
-    axes[0].set_ylabel('Y')
-    axes[0].axis('equal')
+    plt.colorbar(contour1, ax=axes[0], label='Value', fraction=0.046, pad=0.04)
+    axes[0].set_title('Prediction', fontsize=12, fontweight='bold')
+    axes[0].set_xlabel('X', fontsize=10)
+    axes[0].set_ylabel('Y', fontsize=10)
+    axes[0].set_aspect('equal', adjustable='box')
     axes[0].grid(True, alpha=0.3)
     
-    # Target
+    # Target - use more levels for smoother appearance
     contour2 = axes[1].contourf(
         X_target, Y_target, Z_target,
-        levels=50,
+        levels=100,  # Increased from 50 for smoother appearance
         cmap=cmap,
         vmin=vmin,
         vmax=vmax,
@@ -258,43 +289,43 @@ def visualize_prediction_comparison(
     )
     axes[1].contour(
         X_target, Y_target, Z_target,
-        levels=20,
+        levels=30,  # Increased from 20
         colors='black',
-        alpha=0.15,
-        linewidths=0.3
+        alpha=0.1,  # Reduced opacity for smoother look
+        linewidths=0.2
     )
-    plt.colorbar(contour2, ax=axes[1], label='Value')
-    axes[1].set_title('Target')
-    axes[1].set_xlabel('X')
-    axes[1].set_ylabel('Y')
-    axes[1].axis('equal')
+    plt.colorbar(contour2, ax=axes[1], label='Value', fraction=0.046, pad=0.04)
+    axes[1].set_title('Target', fontsize=12, fontweight='bold')
+    axes[1].set_xlabel('X', fontsize=10)
+    axes[1].set_ylabel('Y', fontsize=10)
+    axes[1].set_aspect('equal', adjustable='box')
     axes[1].grid(True, alpha=0.3)
     
-    # Error
+    # Error - use more levels for smoother appearance
     contour3 = axes[2].contourf(
         X_error, Y_error, Z_error,
-        levels=50,
+        levels=100,  # Increased from 50 for smoother appearance
         cmap='Reds',
         extend='both'
     )
     axes[2].contour(
         X_error, Y_error, Z_error,
-        levels=20,
+        levels=30,  # Increased from 20
         colors='black',
-        alpha=0.15,
-        linewidths=0.3
+        alpha=0.1,  # Reduced opacity for smoother look
+        linewidths=0.2
     )
-    plt.colorbar(contour3, ax=axes[2], label='Error')
-    axes[2].set_title('Absolute Error')
-    axes[2].set_xlabel('X')
-    axes[2].set_ylabel('Y')
-    axes[2].axis('equal')
+    plt.colorbar(contour3, ax=axes[2], label='Error', fraction=0.046, pad=0.04)
+    axes[2].set_title('Absolute Error', fontsize=12, fontweight='bold')
+    axes[2].set_xlabel('X', fontsize=10)
+    axes[2].set_ylabel('Y', fontsize=10)
+    axes[2].set_aspect('equal', adjustable='box')
     axes[2].grid(True, alpha=0.3)
     
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
     
     plt.close()
 
