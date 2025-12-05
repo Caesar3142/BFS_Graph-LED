@@ -168,9 +168,30 @@ def visualize_predictions(config_path, checkpoint_path, output_dir='results/visu
         if checkpoint_path.endswith('.pt'):
             checkpoint = torch.load(checkpoint_path, map_location=device)
             if 'model_state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['model_state_dict'])
+                state_dict = checkpoint['model_state_dict']
             else:
-                model.load_state_dict(checkpoint)
+                state_dict = checkpoint
+            
+            # Try to load, with helpful error message if it fails
+            try:
+                model.load_state_dict(state_dict, strict=True)
+            except RuntimeError as e:
+                # Check if it's a size mismatch (likely config mismatch)
+                if 'size mismatch' in str(e) or 'Missing key' in str(e):
+                    print("\n" + "="*60)
+                    print("ERROR: Model architecture mismatch!")
+                    print("="*60)
+                    print("The checkpoint was trained with a different model architecture")
+                    print("than specified in the config file.")
+                    print("\nPossible solutions:")
+                    print("1. Use the matching config file:")
+                    print("   - If checkpoint was trained with fast config, use:")
+                    print("     python visualize_results.py --config configs/backward_step_fast.yaml --checkpoint checkpoints/best_model.pt")
+                    print("   - If checkpoint was trained with regular config, use:")
+                    print("     python visualize_results.py --config configs/backward_step.yaml --checkpoint checkpoints/best_model.pt")
+                    print("\n2. Retrain the model with the current config")
+                    print("="*60)
+                raise
         else:
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
         print(f'Loaded model from {checkpoint_path}')

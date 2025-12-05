@@ -1,0 +1,36 @@
+# Fast training configuration for backward-facing step problem
+# Optimized for speed - use this if training is taking too long
+
+seed: 42
+
+data:
+  path: "data/pitzDaily_flow.npz"  # Path to your data file (pitzDaily OpenFOAM case)
+  sequence_length: 5  # Reduced from 10 for faster training
+  prediction_horizon: 1
+  normalize: true
+  k_neighbors: 6  # Reduced from 8 for faster graph processing
+  graph_type: "knn"  # "knn" or "delaunay"
+
+model:
+  input_dim: 3  # u, v, p (velocity components and pressure)
+  output_dim: 3
+  hidden_dim: 32  # Reduced from 64 for faster training
+  latent_dim: 16  # Reduced from 32 for faster training
+  num_gnn_layers: 2  # Reduced from 3 for faster training
+  num_attention_heads: 2  # Reduced from 4 for faster training
+  num_attention_layers: 1  # Reduced from 2 for faster training
+  use_edge_features: true
+  dropout: 0.1
+  aggregation: "mean"  # "mean" is faster than "attention"
+
+training:
+  batch_size: 8  # Increased from 4 for faster training (if memory allows)
+  num_epochs: 30  # Reduced from 100 - you can stop early if loss plateaus
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  patience: 5  # Reduced from 10 for faster learning rate reduction
+  early_stop_patience: 10  # Stop training if no improvement for 10 epochs
+
+problem:
+  name: "backward_step"
+  reynolds_number: 100  # Can vary this for different cases

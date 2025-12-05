@@ -197,6 +197,8 @@ def main():
     # Resume from checkpoint
     start_epoch = 0
     best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    early_stop_patience = config['training'].get('early_stop_patience', None)
     
     if args.resume:
         checkpoint = torch.load(args.resume, map_location=device)
@@ -229,6 +231,9 @@ def main():
         is_best = val_metrics['loss'] < best_val_loss
         if is_best:
             best_val_loss = val_metrics['loss']
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
         
         checkpoint_path = os.path.join(args.output_dir, f'checkpoint_epoch_{epoch + 1}.pt')
         save_checkpoint(
@@ -245,6 +250,12 @@ def main():
             best_path = os.path.join(args.output_dir, 'best_model.pt')
             torch.save(model.state_dict(), best_path)
             print(f'Saved best model to {best_path}')
+        
+        # Early stopping
+        if early_stop_patience and epochs_without_improvement >= early_stop_patience:
+            print(f'\nEarly stopping: No improvement for {early_stop_patience} epochs')
+            print(f'Best validation loss: {best_val_loss:.6f}')
+            break
     
     print('\nTraining completed!')
 
