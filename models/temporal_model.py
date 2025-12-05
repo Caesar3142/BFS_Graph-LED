@@ -77,8 +77,9 @@ class PositionalEncoding(nn.Module):
 
 class TemporalAttentionModel(nn.Module):
     """
-    Autoregressive temporal model with self-attention.
-    Processes sequences of latent representations to predict future states.
+    Autoregressive temporal model with self-attention following Equation 14.
+    Implements sliding window mechanism: S_j = {Z_0, ..., Z_j} if j < N_sw - 1,
+    S_j = {Z_{j+2-N_sw}, ..., Z_j} if j >= N_sw - 1.
     """
     
     def __init__(
@@ -88,7 +89,8 @@ class TemporalAttentionModel(nn.Module):
         num_heads: int = 4,
         num_layers: int = 2,
         dropout: float = 0.1,
-        max_seq_len: int = 1000
+        max_seq_len: int = 1000,
+        sliding_window: int = None  # N_sw from Equation 14
     ):
         super(TemporalAttentionModel, self).__init__()
         
@@ -96,6 +98,7 @@ class TemporalAttentionModel(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.num_layers = num_layers
+        self.sliding_window = sliding_window  # N_sw: sliding window length
         
         # Input projection
         self.input_proj = nn.Linear(latent_dim, hidden_dim)
@@ -186,7 +189,7 @@ class TemporalAttentionModel(nn.Module):
     
     def autoregressive_forward(self, z_sequence, num_steps=1):
         """
-        Autoregressive prediction for multiple steps.
+        Autoregressive prediction with sliding window following Equation 14.
         
         Args:
             z_sequence: Initial sequence [batch_size, seq_len, latent_dim]
@@ -196,15 +199,44 @@ class TemporalAttentionModel(nn.Module):
             predictions: Predicted sequences [batch_size, num_steps, latent_dim]
         """
         predictions = []
-        current_sequence = z_sequence.clone()
+        batch_size, seq_len, latent_dim = z_sequence.shape
         
-        for _ in range(num_steps):
-            z_pred, _ = self.forward(current_sequence)
+        # Initialize sequence S_0 = {Z_0}
+        current_sequence = z_sequence.clone()  # [batch_size, seq_len, latent_dim]
+        
+        # Determine sliding window length N_sw
+        if self.sliding_window is not None:
+            n_sw = self.sliding_window
+        else:
+            n_sw = seq_len  # Use full sequence if not specified
+        
+        for j in range(num_steps):
+            # Get current sequence S_j following Equation 14
+            if j < n_sw - 1:
+                # S_j = {Z_0, ..., Z_j} if j < N_sw - 1
+                s_j = current_sequence[:, :j+1, :]  # [batch_size, j+1, latent_dim]
+            else:
+                # S_j = {Z_{j+2-N_sw}, ..., Z_j} if j >= N_sw - 1
+                start_idx = j + 2 - n_sw
+                s_j = current_sequence[:, start_idx:j+1, :]  # [batch_size, N_sw, latent_dim]
+            
+            # Predict Z_{j+1} = mhat_N_h^(S_j)(Z_j)
+            # Use last element Z_j as query
+            z_j = s_j[:, -1:, :]  # [batch_size, 1, latent_dim]
+            
+            # Forward pass with sliding window sequence
+            z_pred, _ = self.forward(s_j)  # [batch_size, latent_dim]
             predictions.append(z_pred)
             
-            # Append prediction to sequence and remove oldest
+            # Update sequence: append Z_{j+1} and maintain window
             z_pred_expanded = z_pred.unsqueeze(1)  # [batch_size, 1, latent_dim]
-            current_sequence = torch.cat([current_sequence[:, 1:, :], z_pred_expanded], dim=1)
+            
+            if current_sequence.size(1) < n_sw:
+                # Still building up to window size
+                current_sequence = torch.cat([current_sequence, z_pred_expanded], dim=1)
+            else:
+                # Sliding window: remove oldest, add newest
+                current_sequence = torch.cat([current_sequence[:, 1:, :], z_pred_expanded], dim=1)
         
         return torch.stack(predictions, dim=1)  # [batch_size, num_steps, latent_dim]
 

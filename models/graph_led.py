@@ -68,9 +68,9 @@ class GraphLED(nn.Module):
             use_position_encoding=True
         )
     
-    def encode(self, x, edge_index, batch=None):
+    def encode(self, x, edge_index, node_positions=None, batch=None):
         """Encode flow field to latent representation."""
-        return self.encoder(x, edge_index, batch)
+        return self.encoder(x, edge_index, node_positions, batch)
     
     def decode(self, z, edge_index, node_positions=None, num_nodes=None):
         """Decode latent representation to flow field."""
@@ -120,11 +120,11 @@ class GraphLED(nn.Module):
                 # Batch case - need to handle per-graph encoding
                 z_t_list = []
                 for b in range(batch_size):
-                    z_t = self.encode(x_t[b], edge_index, batch)
+                    z_t = self.encode(x_t[b], edge_index, node_positions, batch)
                     z_t_list.append(z_t)
                 z_t = torch.stack(z_t_list, dim=0)
             else:
-                z_t = self.encode(x_t, edge_index, batch)
+                z_t = self.encode(x_t, edge_index, node_positions, batch)
             
             z_sequence.append(z_t)
         
